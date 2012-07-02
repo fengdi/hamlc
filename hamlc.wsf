@@ -1,0 +1,136 @@
+<!--
+Haml.js compiler for Windows Script Host
+http://tangoboy.cnblogs.com/
+
+Copyright (c) 2010, tangoboy
+Licensed under the Apache 2.0 License.
+-->
+<job>
+<script language="jscript">
+     // Stub out globals
+    var window = this;
+    var fso = new ActiveXObject("Scripting.FileSystemObject");
+    var input = null;
+
+    var util = {
+        readText: function (filename) {
+            //WScript.StdErr.WriteLine("readText: " + filename);
+            var file = fso.OpenTextFile(filename);
+            // Don't error on empty files
+            var text = file.AtEndOfStream ? '' : file.ReadAll();
+
+            // Strip off any UTF-8 BOM
+            var utf8bom = String.fromCharCode(0xEF, 0xBB, 0xBF);
+            if (text.substr(0, utf8bom.length) == utf8bom) {
+                text = text.substr(utf8bom.length);
+            }
+            file.Close();
+            return text;
+        }
+    };
+    
+</script>
+
+<script language="jscript" src="lib/json2.js" />
+<script language="jscript" src="lib/beautify-html.js" />
+<script language="jscript" src="lib/beautify.js" />
+<script language="jscript" src="lib/cssbeautify.js" />
+<script language="jscript" src="lib/showdown.js" />
+<script language="jscript" src="lib/haml.js" />
+<script language="jscript"> 
+    // Parse args
+    var args = {};
+    for (var i = 0; i < WScript.Arguments.Length; i++) {
+        var arg = WScript.Arguments.Item(i);
+        // Handle "-switch" and "--switch"
+        var match = arg.match(/^--?([a-z][0-9a-z-]*)$/i);
+        if (match) {
+            i = match[1];
+            arg = true;
+        }
+        args[i] = arg;
+    }
+
+    input = args[0];
+    var output = args[1];
+
+    if (fso.folderExists(input)) {
+        input = fso.getAbsolutePathName(input);
+        var files = getFiles(input, /\.haml$/i);
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            convert(file.path, output + '\\' + file.name.replace( /\.haml$/i, '.html'));
+        }
+    }
+    else {
+        if (fso.folderexists(output)) {
+            output = fso.getAbsolutePathName(output) + '\\' + fso.getfile(input).name.replace(/\.haml$/i, '.html');
+        }
+        convert(input, output);
+    }
+
+    // Returns array of {name:'foo.bar', path:'c:\baz\foo.bar'} for given directory and pattern
+    function getFiles(dir, regex) {
+        var e = new Enumerator(fso.getFolder(dir).files);
+        var files = []
+        for (; !e.atEnd(); e.moveNext()) {
+            if (regex.test(e.item().path)) {
+                files.push({
+                    name: e.item().name, 
+                    path: e.item().path
+                });
+            }
+        }
+        return files;
+    }
+
+    function convert(input, output) {
+        if (!input) {
+            WScript.StdErr.WriteLine("hamlc.wsf: no input files");
+            WScript.StdErr.WriteLine("Usage:");
+            WScript.StdErr.WriteLine("  Single file: cscript //nologo hamlc.wsf input.haml [output.html] [-compress]");
+            WScript.StdErr.WriteLine("  Directory:   cscript //nologo hamlc.wsf inputdir outputdir [-compress]");
+            WScript.Quit(1);
+        }
+
+        var data;
+        if (input == '-') {
+            var chunks = [];
+            while (!WScript.StdIn.AtEndOfStream)
+            chunks.push(WScript.StdIn.ReadAll());
+            data = chunks.join('');
+        }
+        else {
+            data = util.readText(input);
+        }
+
+        try {
+            //var debug = Haml.compile(data);
+            //WScript.Echo(debug);
+            
+            var html = '';
+            var html = Haml.render(data);
+            html = style_html(html);
+            //WScript.Echo(html);
+            
+            if (output) {
+                var outputfile = fso.CreateTextFile(output);
+                outputfile.Write(html);
+                outputfile.Close();
+            }
+            else {
+                WScript.StdOut.Write(html);
+            }
+        }
+        catch (e) {
+            WScript.StdErr.WriteLine("ERROR:");
+            for (var i in e) {
+                if (e[i]) {
+                    WScript.StdErr.WriteLine("  " + i + ': ' + e[i]);
+                }
+            }
+            WScript.Quit(3);
+        }
+    }
+</script>
+</job>
